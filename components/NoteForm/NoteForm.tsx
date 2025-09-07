@@ -1,134 +1,121 @@
-import css from "./Noteform.module.css";
-import { Formik, Form, Field } from "formik";
+"use client";
+
+import { Formik, Form, ErrorMessage, type FormikHelpers, Field } from "formik";
+import css from "./NoteForm.module.css";
 import * as Yup from "yup";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createNote } from "@/lib/api";
-import type { NoteTag } from "@/types/note";
-import ErrorMessage from "../ErrorMessage/ErrorMessage";
+import { createNote, type Tag } from "@/lib/api";
+import { Loading } from "notiflix";
+import toast from "react-hot-toast";
 
 interface NoteFormProps {
-  onClose: () => void;
+  categories: Tag[];
+  onSubmit: () => void;
+  onCancel: () => void;
 }
 
-export default function NoteForm({ onClose }: NoteFormProps) {
-  const queryClient = useQueryClient();
+interface InitialValues {
+  title: string;
+  content: string;
+  tag: Tag;
+}
 
-  const mutation = useMutation({
-    mutationFn: (note: { title: string; content: string; tag: NoteTag }) =>
-      createNote(note),
+const initialValues: InitialValues = {
+  title: "",
+  content: "",
+  tag: "Todo",
+};
+
+export default function NoteForm({
+  categories,
+  onSubmit,
+  onCancel,
+}: NoteFormProps) {
+  const formScheme = Yup.object().shape({
+    title: Yup.string()
+      .min(3, "Title must be at least 3 characters")
+      .max(50, "Title must be less or equal to 50 characters")
+      .required("Title is required"),
+    content: Yup.string().max(
+      500,
+      "Content must be less or equal to 500 characters"
+    ),
+    tag: Yup.string().oneOf(categories),
+  });
+  const queryClient = useQueryClient();
+  const noteCreation = useMutation({
+    mutationFn: async ({ title, content, tag }: InitialValues) => {
+      const data = await createNote(title, content, tag);
+      return data;
+    },
     onSuccess: () => {
+      onSubmit();
+      Loading.remove();
+      toast.success("Note has been successfully created!");
       queryClient.invalidateQueries({ queryKey: ["notes"] });
-      onClose();
+    },
+    onError: () => {
+      Loading.remove();
+      toast.error("Error occured while creating note!");
     },
   });
-
-  const initialValues = {
-    title: "",
-    content: "",
-    tag: "Todo" as NoteTag,
+  const onFormSubmit = (
+    values: InitialValues,
+    actions: FormikHelpers<InitialValues>
+  ) => {
+    Loading.hourglass();
+    noteCreation.mutate(values);
+    actions.resetForm();
   };
-
-  const validationSchema = Yup.object({
-    title: Yup.string()
-      .min(3, "Too short")
-      .max(50, "Too long")
-      .required("Required"),
-    content: Yup.string().max(500, "Too long"),
-    tag: Yup.mixed<NoteTag>()
-      .oneOf(["Todo", "Work", "Personal", "Meeting", "Shopping"])
-      .required("Required"),
-  });
 
   return (
     <Formik
       initialValues={initialValues}
-      validationSchema={validationSchema}
-      onSubmit={(values, { resetForm }) => {
-        mutation.mutate(values, {
-          onSuccess: () => {
-            resetForm();
-          },
-        });
-      }}
+      onSubmit={onFormSubmit}
+      validationSchema={formScheme}
     >
-      {({
-        values,
-        handleChange,
-        handleBlur,
-        handleSubmit,
-        errors,
-        touched,
-      }) => (
-        <form className={css.form} onSubmit={handleSubmit}>
-          <div className={css.formGroup}>
-            <label htmlFor="title">Title</label>
-            <input
-              id="title"
-              name="title"
-              type="text"
-              className={css.input}
-              value={values.title}
-              onChange={handleChange}
-              onBlur={handleBlur}
-            />
-            {touched.title && errors.title && (
-              <ErrorMessage message={errors.title} />
-            )}
-          </div>
+      <Form className={css.form}>
+        <div className={css.formGroup}>
+          <label htmlFor="title">Title</label>
+          <Field type="text" name="title" id="title" className={css.input} />
+          <ErrorMessage name="title" component="span" className={css.error} />
+        </div>
 
-          <div className={css.formGroup}>
-            <label htmlFor="content">Content</label>
-            <textarea
-              id="content"
-              name="content"
-              rows={8}
-              className={css.textarea}
-              value={values.content}
-              onChange={handleChange}
-              onBlur={handleBlur}
-            />
-            {touched.content && errors.content && (
-              <ErrorMessage message={errors.content} />
-            )}
-          </div>
+        <div className={css.formGroup}>
+          <label htmlFor="content">Content</label>
+          <Field
+            as="textarea"
+            name="content"
+            id="content"
+            rows={8}
+            className={css.textarea}
+          />
+          <ErrorMessage name="content" component="span" className={css.error} />
+        </div>
 
-          <div className={css.formGroup}>
-            <label htmlFor="tag">Tag</label>
-            <select
-              id="tag"
-              name="tag"
-              className={css.select}
-              value={values.tag}
-              onChange={handleChange}
-              onBlur={handleBlur}
-            >
-              <option value="Todo">Todo</option>
-              <option value="Work">Work</option>
-              <option value="Personal">Personal</option>
-              <option value="Meeting">Meeting</option>
-              <option value="Shopping">Shopping</option>
-            </select>
-            {touched.tag && errors.tag && <ErrorMessage message={errors.tag} />}
-          </div>
+        <div className={css.formGroup}>
+          <label htmlFor="tag">Tag</label>
+          <Field as="select" name="tag" id="tag" className={css.select}>
+            {categories
+              .filter((tag: Tag) => tag !== "All")
+              .map((tag: Tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+          </Field>
+          <ErrorMessage name="tag" component="span" className={css.error} />
+        </div>
 
-          <div className={css.actions}>
-            <button
-              type="button"
-              className={css.cancelButton}
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className={css.submitButton}
-              disabled={mutation.isPending}
-            >
-              {mutation.isPending ? "Creating..." : "Create note"}
-            </button>
-          </div>
-        </form>
-      )}
+        <div className={css.actions}>
+          <button type="button" className={css.cancelButton} onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className={css.submitButton}>
+            Create note
+          </button>
+        </div>
+      </Form>
     </Formik>
   );
 }

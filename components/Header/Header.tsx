@@ -1,20 +1,23 @@
 import Link from "next/link";
 import css from "./Header.module.css";
 import TagsMenu from "../TagsMenu/TagsMenu";
+import { getCategories } from "@/lib/api";
+import { Routes } from "@/config/routes";
 
 const Header = () => {
+  const categories = [...getCategories];
   return (
     <header className={css.header}>
-      <Link href="/" aria-label="Home">
+      <Link href={Routes.Home} aria-label="Home">
         NoteHub
       </Link>
       <nav aria-label="Main Navigation">
         <ul className={css.navigation}>
           <li>
-            <Link href="/">Home</Link>
+            <Link href={Routes.Home}>Home</Link>
           </li>
           <li>
-            <Link href="/notes">Notes</Link>
+            <TagsMenu categories={categories} />
           </li>
         </ul>
       </nav>

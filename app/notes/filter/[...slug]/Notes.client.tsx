@@ -1,63 +1,80 @@
 "use client";
 
-import { useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useDebounce } from "use-debounce";
-import styles from "@/app/Notes.module.css";
-import { fetchNotes } from "@/lib/api";
-import NoteList from "@/components/NoteList/NoteList";
-import SearchBox from "@/components/SearchBox/SearchBox";
-import Pagination from "@/components/Pagination/Pagination";
 import Modal from "@/components/Modal/Modal";
 import NoteForm from "@/components/NoteForm/NoteForm";
-import Loader from "@/components/Loader/Loader";
-import ErrorMessage from "@/components/ErrorMessage/ErrorMessage";
+import NoteList from "@/components/NoteList/NoteList";
+import Pagination from "@/components/Pagination/Pagination";
+import SearchBox from "@/components/SearchBox/SearchBox";
+import { fetchNotes, type Tag } from "@/lib/api";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { Toaster } from "react-hot-toast";
+import { useDebounce, useDebouncedCallback } from "use-debounce";
+import css from "./Notes.client.module.css";
 
-export default function NotesClient() {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch] = useDebounce(search, 500);
-  const [isModalOpen, setModalOpen] = useState(false);
+interface NotesClientProps {
+  categories: Tag[];
+  category: Exclude<Tag, "All"> | undefined;
+}
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["notes", page, debouncedSearch],
-    queryFn: () => fetchNotes(page, 12, debouncedSearch),
+const NotesClient = ({ categories, category }: NotesClientProps) => {
+  const [query, setQuery] = useState<string>("");
+  const [debouncedQuery] = useDebounce(query, 300);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [page, setPage] = useState<number>(1);
+  const {
+    data: notes,
+    isSuccess,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["notes", { search: debouncedQuery, page, category }],
+    queryFn: () => fetchNotes(debouncedQuery, page, undefined, category),
+    refetchOnMount: false,
     placeholderData: keepPreviousData,
   });
 
-  function handleSearchChange(value: string) {
-    setSearch(value);
-    setPage(1);
-  }
+  const totalPages = notes?.totalPages ?? 1;
+  const onQueryChange = useDebouncedCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setPage(1);
+      setQuery(e.target.value);
+    },
+    300
+  );
+
+  if (isLoading) return <p>Loading, please wait...</p>;
+  if (error || !notes)
+    return <p>Could not fetch the list of notes. {error?.message}</p>;
+
+  const handleClose = () => {
+    setIsModalOpen(false);
+  };
 
   return (
-    <div className={styles.app}>
-      <header className={styles.toolbar}>
-        <SearchBox search={search} onChange={handleSearchChange} />
-
-        {data && data.totalPages > 1 && (
-          <Pagination
-            pageCount={data.totalPages}
-            currentPage={page}
-            onPageChange={setPage}
-          />
+    <div className={css.app}>
+      <Toaster />
+      <header className={css.toolbar}>
+        <SearchBox onChange={onQueryChange} />
+        {totalPages > 1 && (
+          <Pagination totalPages={totalPages} page={page} setPage={setPage} />
         )}
-
-        <button className={styles.button} onClick={() => setModalOpen(true)}>
+        <button className={css.button} onClick={() => setIsModalOpen(true)}>
           Create note +
         </button>
       </header>
-
-      {isLoading && <Loader />}
-      {isError && <ErrorMessage message="Failed to load notes" />}
-
-      {data && data.notes.length > 0 && <NoteList notes={data.notes} />}
-
+      {isSuccess && notes && <NoteList notes={notes.notes} />}
       {isModalOpen && (
-        <Modal onClose={() => setModalOpen(false)}>
-          <NoteForm onClose={() => setModalOpen(false)} />
+        <Modal onClose={handleClose}>
+          <NoteForm
+            categories={categories}
+            onSubmit={handleClose}
+            onCancel={handleClose}
+          />
         </Modal>
       )}
     </div>
   );
-}
+};
+
+export default NotesClient;
