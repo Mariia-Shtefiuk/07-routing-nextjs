@@ -27,18 +27,16 @@ export const fetchNotes = async (
   tag?: FilterableTag,
   sortBy?: SortBy
 ) => {
-  const params: Record<string, string | number> = { page, perPage };
-  if (search) params.search = search;
+  const params: { [key: string]: string | number } = {
+    page,
+    perPage,
+  };
 
-  const { data } = await axios.get<PaginatedNotes>("notes", {
-    params: {
-      search,
-      page,
-      perPage,
-      tag,
-      sortBy,
-    },
-  });
+  if (search) params.search = search;
+  if (tag) params.tag = tag;
+  if (sortBy) params.sortBy = sortBy;
+
+  const { data } = await axios.get<PaginatedNotes>("notes", { params });
   return data;
 };
 
